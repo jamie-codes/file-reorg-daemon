@@ -20,7 +20,7 @@
 Ensure you have Python 3.6+ installed. Clone the repository containing the script:
 
 ```bash
-git clone https://github.com/your-repo/file-reorg-daemon.git
+git clone https://github.com/jamie-codes/file-reorg-daemon.git
 cd file-reorg-daemon/src
 ```
 
