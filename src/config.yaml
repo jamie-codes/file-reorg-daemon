@@ -1,0 +1,7 @@
+# config.yaml
+source_directory: "/temp/source"
+destination_directory: "/temp/dest"
+quarantine_directory: "/temp/quaruntine"
+log_file: "file_reorg.log"
+debug_mode: true
+retry_attempts: 3
