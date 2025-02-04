@@ -75,7 +75,3 @@ This project is licensed under the MIT License.
 
 ## Contributing
 Feel free to fork the repository and submit pull requests with improvements or bug fixes.
-
-## Contact
-For issues and support, please create an issue in the repository.
-
