@@ -1,126 +1,81 @@
-# File Reorganizer Daemon
+# File Reorg Daemon
 
-`file-reorg-daemon.py` is a Python script designed to monitor a source directory for new files, reorganize them into a date-based folder structure within a destination directory, and handle errors gracefully by quarantining problematic files. It supports concurrent processing and provides detailed logging and performance metrics.
-
----
+## Overview
+The File Reorg Daemon is a Python script that monitors a source directory and automatically moves files to a structured date-based directory format. It supports dynamic quarantine handling, a configurable retry mechanism, and enhanced logging with log rotation.
 
 ## Features
-
-- **Date-based File Organization**: Files named with a `YYYY-MM-DD` format are sorted into a structured directory hierarchy (`/destination/YYYY/MM/DD/`).
-- **Error Handling**: Files that fail to process after multiple retries are moved to a quarantine folder.
-- **Concurrency**: Supports multi-threaded file processing with configurable worker threads.
-- **Metrics Logging**: Tracks processing performance, including success/failure rates and average processing time.
-- **Polling**: Continuously monitors the source directory for new files with a configurable polling interval.
-- **Disk Space Check**: Skips processing when disk space is below a safe threshold.
-
----
+- **Automatic File Organization**: Moves files based on their last modified date.
+- **Configuration via YAML**: Easily adjustable parameters without modifying the script.
+- **Quarantine Handling**: Files that fail multiple move attempts are quarantined.
+- **Enhanced Logging**: Supports log rotation and different log levels.
+- **Retry Mechanism**: Allows multiple attempts before quarantining a file.
 
 ## Installation
 
-Ensure you have Python 3.6+ installed. Clone the repository containing the script:
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/jamie-codes/file-reorg-daemon.git
+   cd file-reorg-daemon
+   ```
 
-```bash
-git clone https://github.com/jamie-codes/file-reorg-daemon.git
-cd file-reorg-daemon/src
+2. Install dependencies (if needed):
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Configure the daemon by editing `config.yaml`.
+
+## Configuration
+The script reads settings from `config.yaml`. Below is an example configuration:
+
+```yaml
+source_directory: "/path/to/source"
+destination_directory: "/path/to/destination"
+quarantine_directory: "/path/to/quarantine"
+log_file: "file_reorg.log"
+debug_mode: true
+retry_attempts: 3
 ```
 
----
+### Explanation of Configuration Parameters:
+- `source_directory`: Directory where the script monitors for files.
+- `destination_directory`: Base directory where organized files are stored.
+- `quarantine_directory`: Directory where files are moved if they fail multiple move attempts.
+- `log_file`: Path to the log file for tracking script activity.
+- `debug_mode`: Enables verbose logging when set to `true`.
+- `retry_attempts`: Number of times the script attempts to move a file before quarantining it.
 
 ## Usage
-
-Run the script from the command line:
-
-```bash
-python file-reorg-daemon.py <source> <destination> <quarantine_folder> [options]
-```
-
-### Required Arguments
-
-- `source`: Path to the source directory to monitor for new files.
-- `destination`: Root path for reorganized files.
-- `quarantine_folder`: Path to store problematic files.
-
-### Optional Arguments
-
-- `--poll_interval`: Polling interval in milliseconds (default: 5000 ms).
-- `--max_workers`: Maximum number of threads for concurrent processing (default: 4).
-- `--max_retries`: Number of retries for failed file operations (default: 3).
-
-### Example
+Run the script manually:
 
 ```bash
-python file-reorg-daemon.py /path/to/source /path/to/destination /path/to/quarantine --poll_interval 3000 --max_workers 6 --max_retries 5
+python file-reorg-daemon.py
 ```
 
----
+Or schedule it as a cron job:
+
+```bash
+*/5 * * * * /usr/bin/python3 /path/to/file-reorg-daemon.py
+```
 
 ## Logging
+Logs are stored in the file specified in `config.yaml`. The script uses a rotating log system, ensuring old logs are archived when the file size exceeds 1MB.
 
-The script logs its operations to the console. You can configure the log level using the `LOG_LEVEL` environment variable:
+To view logs in real time:
 
 ```bash
-export LOG_LEVEL=DEBUG  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+tail -f file_reorg.log
 ```
 
-Example log output:
+## Quarantine Handling
+If a file cannot be moved after the specified number of retries, it is automatically placed in the quarantine directory for manual review.
 
-```
-2025-01-22 10:00:00 - INFO - Starting file synchronization process...
-2025-01-22 10:00:05 - INFO - File /path/to/source/2025-01-21-example.txt moved in 0.35 seconds
-2025-01-22 10:00:05 - ERROR - Moved /path/to/source/problematic.txt to quarantine after 3 failed attempts
-```
-
----
-
-## Key Functionalities
-
-### File Organization
-
-Files are moved to directories structured by their date:
-
-```
-/destination/YYYY/MM/DD/
-```
-
-### Quarantine Handling
-
-Files failing after all retries are moved to the specified quarantine folder for further inspection.
-
-### Performance Metrics
-
-Periodic logs provide insight into:
-
-- Total processed files
-- Success and failure counts
-- Average processing time per file
-- Error rate
-- Throughput (files processed per second)
-
-### Disk Space Monitoring
-
-The script ensures at least 10% free disk space is available in the destination before processing.
-
----
-
-## Development
-
-### Dependencies
-
-No external dependencies are required; all functionality relies on Python's standard library.
-
-### Testing
-
-You can test the script by creating sample files in the source directory and observing the behaviour in the destination and quarantine folders.
-
----
+## License
+This project is licensed under the MIT License.
 
 ## Contributing
+Feel free to fork the repository and submit pull requests with improvements or bug fixes.
 
-If you'd like to contribute:
-
-1. Fork the repository.
-2. Create a feature branch.
-3. Submit a pull request.
-
----
+## Contact
+For issues and support, please create an issue in the repository.
 
