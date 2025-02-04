@@ -1,85 +1,89 @@
 import os
-import shutil
-import logging
 import time
-import yaml
-from logging.handlers import RotatingFileHandler
+import signal
+import threading
+import logging
+from queue import Queue
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 from prometheus_client import start_http_server, Counter, Summary
 
+# Configure logging
+logging.basicConfig(
+    filename="file_reorg_daemon.log",
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
-# Load configuration from a YAML file
-def load_config(config_path="config.yaml"):
-    with open(config_path, "r") as file:
-        return yaml.safe_load(file)
-
-config = load_config()
-
-# Logging setup
-log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-log_handler = RotatingFileHandler(config["log_file"], maxBytes=1048576, backupCount=3)
-log_handler.setFormatter(log_formatter)
-logger = logging.getLogger("FileReorgDaemon")
-logger.setLevel(logging.DEBUG if config["debug_mode"] else logging.INFO)
-logger.addHandler(log_handler)
-
-
-# Prometheus  metrics
+# Prometheus Metrics
 FILES_PROCESSED = Counter('files_processed_total', 'Total number of files processed')
 PROCESSING_TIME = Summary('file_processing_seconds', 'Time spent processing files')
+FILE_QUEUE_SIZE = Counter('file_queue_size', 'Current number of files in queue')
 
+# Configuration
+WATCH_DIRECTORY = "/path/to/watch"
+DESTINATION_DIRECTORY = "/path/to/destination"
+MAX_WORKERS = 4
 
+# Queue for processing
+file_queue = Queue()
 
-# Function to get file's modified time and categorize it
-def get_date_folder(file_path):
-    modified_time = time.gmtime(os.path.getmtime(file_path))
-    return time.strftime("%Y-%m-%d", modified_time)
-
-# Move files to their respective directories based on modification date
-def move_files():
-    #Start Prometheus server
-    start_http_server(8000)
-    source_dir = config["source_directory"]
-    dest_dir = config["destination_directory"]
-    quarantine_dir = config["quarantine_directory"]
-    retry_attempts = config["retry_attempts"]
-    
-    if not os.path.exists(source_dir):
-        logger.error(f"Source directory {source_dir} does not exist.")
-        return
-    
-    for file_name in os.listdir(source_dir):
-        file_path = os.path.join(source_dir, file_name)
-        if not os.path.isfile(file_path):
-            continue
-
-        date_folder = get_date_folder(file_path)
-        target_folder = os.path.join(dest_dir, date_folder)
-        os.makedirs(target_folder, exist_ok=True)
-
-        target_path = os.path.join(target_folder, file_name)
-        attempts = 0
-
-        while attempts < retry_attempts:
-            try:
-                shutil.move(file_path, target_path)
-                logger.info(f"Moved {file_name} to {target_folder}")
-                break
-            except Exception as e:
-                attempts += 1
-                logger.warning(f"Attempt {attempts} failed for {file_name}: {e}")
-                time.sleep(2)  # Wait before retrying
-        else:
-            quarantine_path = os.path.join(quarantine_dir, file_name)
-            shutil.move(file_path, quarantine_path)
-            logger.error(f"Quarantined {file_name} after {retry_attempts} failed attempts")
-
-if __name__ == "__main__":
+def process_file(file_path):
+    """Process a single file with error handling."""
     start_time = time.time()
     try:
-        move_files()
-    finally:
-        duration = time.time() - start_time
-        PROCESSING_TIME.observe(duration)
+        destination_path = os.path.join(DESTINATION_DIRECTORY, os.path.basename(file_path))
+        os.rename(file_path, destination_path)
         FILES_PROCESSED.inc()
+        logging.info(f"Moved {file_path} to {destination_path}")
+    except Exception as e:
+        logging.error(f"Error processing {file_path}: {e}")
+    finally:
+        PROCESSING_TIME.observe(time.time() - start_time)
 
+def worker():
+    """Worker function to process files from queue."""
+    while True:
+        file_path = file_queue.get()
+        if file_path is None:
+            break
+        process_file(file_path)
+        file_queue.task_done()
+
+def monitor_directory():
+    """Monitors a directory and adds new files to the queue."""
+    class Handler(FileSystemEventHandler):
+        def on_created(self, event):
+            if not event.is_directory:
+                logging.info(f"New file detected: {event.src_path}")
+                FILE_QUEUE_SIZE.inc()
+                file_queue.put(event.src_path)
     
+    observer = Observer()
+    observer.schedule(Handler(), WATCH_DIRECTORY, recursive=False)
+    observer.start()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
+
+def signal_handler(sig, frame):
+    """Handles shutdown signals gracefully."""
+    logging.info("Shutdown signal received. Exiting...")
+    for _ in range(MAX_WORKERS):
+        file_queue.put(None)
+    exit(0)
+
+if __name__ == "__main__":
+    start_http_server(8000)
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Start worker threads
+    for _ in range(MAX_WORKERS):
+        threading.Thread(target=worker, daemon=True).start()
+    
+    # Start monitoring directory
+    monitor_directory()
