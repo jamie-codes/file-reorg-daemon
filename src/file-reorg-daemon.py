@@ -4,6 +4,8 @@ import logging
 import time
 import yaml
 from logging.handlers import RotatingFileHandler
+from prometheus_client import start_http_server, Counter, Summary
+
 
 # Load configuration from a YAML file
 def load_config(config_path="config.yaml"):
@@ -20,6 +22,13 @@ logger = logging.getLogger("FileReorgDaemon")
 logger.setLevel(logging.DEBUG if config["debug_mode"] else logging.INFO)
 logger.addHandler(log_handler)
 
+
+# Prometheus  metrics
+FILES_PROCESSED = Counter('files_processed_total', 'Total number of files processed')
+PROCESSING_TIME = Summary('file_processing_seconds', 'Time spent processing files')
+
+
+
 # Function to get file's modified time and categorize it
 def get_date_folder(file_path):
     modified_time = time.gmtime(os.path.getmtime(file_path))
@@ -27,6 +36,8 @@ def get_date_folder(file_path):
 
 # Move files to their respective directories based on modification date
 def move_files():
+    #Start Prometheus server
+    start_http_server(8000)
     source_dir = config["source_directory"]
     dest_dir = config["destination_directory"]
     quarantine_dir = config["quarantine_directory"]
@@ -63,4 +74,12 @@ def move_files():
             logger.error(f"Quarantined {file_name} after {retry_attempts} failed attempts")
 
 if __name__ == "__main__":
-    move_files()
+    start_time = time.time()
+    try:
+        move_files()
+    finally:
+        duration = time.time() - start_time
+        PROCESSING_TIME.observe(duration)
+        FILES_PROCESSED.inc()
+
+    
